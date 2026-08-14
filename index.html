@@ -1,92 +1,385 @@
+https://script.google.com/macros/s/AKfycbyOSmqey-dKo3z8--nrFdoPv3gMIcHFevpJ8X3XNmcvbYALNChZ5z3hu1LyaBj5kDTnlw/exec
+
 <!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <title>Загрузка из Google Sheets через JSON</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Синхронизация заявок на полеты</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    table { border-collapse: collapse; width: 100%; max-width: 700px; margin-top: 15px; }
-    th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
-    th { background-color: #f4f4f4; }
-    .status { color: #666; font-size: 14px; }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 12px;
+      background-color: #f4f6f9;
+      color: #333;
+    }
+
+    /* Панель управления */
+    .header-panel {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      background: #fff;
+      padding: 14px 16px;
+      border-radius: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+      margin-bottom: 14px;
+    }
+    label {
+      font-weight: 600;
+      font-size: 14px;
+    }
+    select {
+      flex: 1;
+      min-width: 200px;
+      padding: 10px 12px;
+      font-size: 15px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      background-color: #fff;
+      outline: none;
+    }
+    .status-badge {
+      font-size: 13px;
+      padding: 8px 14px;
+      border-radius: 20px;
+      background: #e0e0e0;
+      color: #555;
+      font-weight: 500;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .status-badge.syncing { background: #fff3cd; color: #856404; }
+    .status-badge.success { background: #d4edda; color: #155724; }
+    .status-badge.error { background: #f8d7da; color: #721c24; }
+
+    /* Таблица с прокруткой для мобильных */
+    .table-container {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+      border: 1px solid #e0e0e0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      min-width: 800px; /* Гарантирует читаемость столбцов на узких экранах */
+    }
+    th, td {
+      border: 1px solid #e9ecef;
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: middle;
+    }
+    th {
+      background-color: #f8f9fa;
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    /* Выравнивание радиокнопок */
+    td.text-center, th.text-center {
+      text-align: center;
+    }
+
+    /* Заблокированные столбцы (1-4 и 10) */
+    td.readonly {
+      background-color: #f8f9fa;
+      color: #6c757d;
+      user-select: none;
+    }
+
+    /* Редактируемые текстовые ячейки (5-9) */
+    td.editable {
+      background-color: #ffffff;
+      transition: background-color 0.2s;
+    }
+    td.editable[contenteditable="true"] {
+      cursor: text;
+      min-width: 80px;
+    }
+    td.editable[contenteditable="true"]:hover {
+      background-color: #f0f7ff;
+    }
+    td.editable[contenteditable="true"]:focus {
+      outline: 2px solid #007bff;
+      background-color: #eef6ff;
+      border-radius: 4px;
+    }
+
+    /* Увеличенные radiobutton для мобильного тапа */
+    .radio-wrapper {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      min-height: 28px;
+    }
+    input[type="radio"] {
+      width: 22px;
+      height: 22px;
+      cursor: pointer;
+      accent-color: #007bff;
+      margin: 0;
+    }
+
+    /* Мобильная адаптация CSS (медиазапрос) */
+    @media (max-width: 600px) {
+      body {
+        margin: 8px;
+      }
+      .header-panel {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 12px;
+        gap: 8px;
+      }
+      select {
+        width: 100%;
+      }
+      .status-badge {
+        width: 100%;
+      }
+      th, td {
+        padding: 8px 10px;
+        font-size: 13px;
+      }
+    }
   </style>
 </head>
 <body>
 
-  <h2>Авто-загрузка через Google Visualization API (JSON)</h2>
-  <div class="status" id="status">Загрузка...</div>
+  <div class="header-panel">
+    <label for="sheetSelect">Выберите дату (лист):</label>
+    <select id="sheetSelect">
+      <option value="">Загрузка листов...</option>
+    </select>
+    <div id="statusBadge" class="status-badge">Готово</div>
+  </div>
 
-  <table id="myTable">
-    <thead>
-      <tr id="tableHeader"></tr>
-    </thead>
-    <tbody id="tableBody"></tbody>
-  </table>
+  <div class="table-container">
+    <table id="dataTable">
+      <thead>
+        <tr id="tableHeader"></tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
 
   <script>
-    // ВСТАВЬТЕ СЮДА ID ВАШЕЙ ТАБЛИЦЫ
-    const SPREADSHEET_ID = '1dNnbLb6sIOrY0THyMOftjhyZQANtPpBb5WVm3SIM-RI';
-    const SHEET_NAME = '12.08.2026';
-    const RANGE = 'B6:B30';
-    // Ссылка на JSON-эндпоинт
-    const JSON_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_NAME)}&range=${RANGE}`;
+    // URL Google Apps Script Web App
+    const API_URL = "https://script.google.com/macros/s/AKfycbyOSmqey-dKo3z8--nrFdoPv3gMIcHFevpJ8X3XNmcvbYALNChZ5z3hu1LyaBj5kDTnlw/exec";
 
-    async function fetchSheetData() {
-      const statusDiv = document.getElementById('status');
+    let currentSheet = "";
 
+    const sheetSelect = document.getElementById("sheetSelect");
+    const statusBadge = document.getElementById("statusBadge");
+
+    function setStatus(text, state = "") {
+      statusBadge.textContent = text;
+      statusBadge.className = "status-badge " + state;
+    }
+
+    // Поиск даты в названии листа
+    const datePattern = /(\d{1,2}[\.\/\-]\d{1,2}[\.\/\-]\d{2,4})|(\d{4}[\.\/\-]\d{1,2}[\.\/\-]\d{1,2})/;
+
+    // 1. Загрузка листов
+    async function loadSheets() {
+      setStatus("Загрузка листов...", "syncing");
       try {
-        const response = await fetch(JSON_URL, { cache: 'no-cache' });
-        const textData = await response.text();
+        const res = await fetch(`${API_URL}?action=getSheets`);
+        const data = await res.json();
+        sheetSelect.innerHTML = "";
 
-        // Ответ Google обернут в google.visualization.Query.setResponse(...);
-        // Вырезаем сам чистый JSON внутри скобок
-        const jsonString = textData.substring(
-          textData.indexOf('{'),
-          textData.lastIndexOf('}') + 1
-        );
+        const dateSheets = (data.sheets || []).filter(sheetName => datePattern.test(sheetName));
 
-        const data = JSON.parse(jsonString);
-        renderTable(data.table);
+        if (dateSheets.length === 0) {
+          const opt = document.createElement("option");
+          opt.value = "";
+          opt.textContent = "Листы с датами не найдены";
+          sheetSelect.appendChild(opt);
+          setStatus("Нет листов с датами", "error");
+          return;
+        }
 
-        statusDiv.textContent = `Данные загружены! Обновлено: ${new Date().toLocaleTimeString()}`;
-      } catch (err) {
-        console.error('Ошибка:', err);
-        statusDiv.textContent = 'Ошибка при загрузке данных.';
+        dateSheets.forEach(sheetName => {
+          const opt = document.createElement("option");
+          opt.value = sheetName;
+          opt.textContent = sheetName;
+          sheetSelect.appendChild(opt);
+        });
+
+        currentSheet = dateSheets[0];
+        loadTableData(currentSheet);
+        setStatus("Готово", "success");
+      } catch (e) {
+        setStatus("Ошибка загрузки листов", "error");
       }
     }
 
-    function renderTable(tableData) {
-      const headerRow = document.getElementById('tableHeader');
-      const tbody = document.getElementById('tableBody');
+    // 2. Загрузка данных таблицы
+    async function loadTableData(sheetName, isAutoRefresh = false) {
+      if (!sheetName) return;
+      if (!isAutoRefresh) setStatus("Обновление данных...", "syncing");
 
-      headerRow.innerHTML = '';
-      tbody.innerHTML = '';
+      try {
+        const res = await fetch(`${API_URL}?action=getData&sheet=${encodeURIComponent(sheetName)}`);
+        const data = await res.json();
 
-      // 1. Отрисовка заголовков столбцов
-      tableData.cols.forEach(col => {
-        const th = document.createElement('th');
-        // Берем имя столбца из Google Sheets (если задано) или дефолтный лейбл
-        th.textContent = col.label || col.id;
-        headerRow.appendChild(th);
-      });
-
-      // 2. Отрисовка строк
-      tableData.rows.forEach(row => {
-        const tr = document.createElement('tr');
-        
-        row.c.forEach(cell => {
-          const td = document.createElement('td');
-          // Если ячейка не пустая, берем ее отформатированное значение (v) или сырой текст (f)
-          td.textContent = cell && cell.v !== null ? (cell.f || cell.v) : '';
-          tr.appendChild(td);
-        });
-
-        tbody.appendChild(tr);
-      });
+        if (data.rows) {
+          renderTable(data.rows);
+          if (!isAutoRefresh) setStatus("Синхронизировано", "success");
+        }
+      } catch (e) {
+        if (!isAutoRefresh) setStatus("Ошибка получения данных", "error");
+      }
     }
 
-    // Запускаем при загрузке страницы
-    fetchSheetData();
+    // 3. Отрисовка таблицы
+    function renderTable(rows) {
+      const tbody = document.getElementById("tableBody");
+      const thead = document.getElementById("tableHeader");
+      
+      // Предотвращение сброса фокуса во время ввода или клика
+      if (document.activeElement && (document.activeElement.tagName === "TD" || document.activeElement.tagName === "INPUT")) {
+        return;
+      }
+
+      tbody.innerHTML = "";
+      thead.innerHTML = "";
+
+      if (!rows || rows.length < 4) return;
+
+      // 4-я строка Гугл-таблицы (индекс 3) -> Шапка
+      const headers = rows[3];
+      headers.forEach((h, index) => {
+        const th = document.createElement("th");
+        th.textContent = h;
+        if (index === 4 || index === 5) {
+          th.classList.add("text-center");
+        }
+        thead.appendChild(th);
+      });
+
+      // Данные с 5-й строки Гугл-таблицы (индекс 4 в массиве)
+      for (let r = 4; r < rows.length; r++) {
+        const tr = document.createElement("tr");
+        const rowData = rows[r];
+        
+        const sheetRowNumber = r + 1; // 1-based номер строки в Гугл-таблице
+        const radioGroupName = `row_status_${sheetRowNumber}`;
+
+        const valE = String(rowData[4] !== undefined ? rowData[4] : "").trim().toLowerCase();
+        const valF = String(rowData[5] !== undefined ? rowData[5] : "").trim().toLowerCase();
+
+        const isYesChecked = valE === "true" || valE === "да" || valE === "1";
+        const isNoChecked = valF === "true" || valF === "да" || valF === "1" || (!isYesChecked && (valE === "false" || valE === "нет"));
+
+        for (let c = 0; c < 10; c++) {
+          const td = document.createElement("td");
+          const cellValue = rowData[c] !== undefined ? rowData[c] : "";
+
+          if ((c === 4 || c === 5) && sheetRowNumber >= 6) {
+            // --- СТРОКИ 6+: Столбцы 5 (E) и 6 (F) -> RADIOBUTTON ---
+            td.className = "editable text-center";
+            
+            const isYesCol = (c === 4);
+            const isChecked = isYesCol ? isYesChecked : isNoChecked;
+            const checkVal = isYesCol ? "true" : "false";
+
+            td.innerHTML = `<div class="radio-wrapper"><input type="radio" name="${radioGroupName}" value="${checkVal}" ${isChecked ? "checked" : ""}></div>`;
+
+            const radio = td.querySelector("input");
+            radio.addEventListener("change", () => {
+              sendUpdates([
+                { rowIndex: sheetRowNumber, colIndex: 5, value: isYesCol },
+                { rowIndex: sheetRowNumber, colIndex: 6, value: !isYesCol }
+              ]);
+            });
+
+          } else if (c >= 4 && c <= 8) {
+            // --- СТОЛБЦЫ 5, 6 (для 5-й строки) И 7, 8, 9 (E-I) ДЛЯ ВСЕХ СТРОК -> РЕДАКТИРУЕМЫЕ ---
+            td.className = "editable";
+            td.contentEditable = "true";
+            td.textContent = cellValue;
+            td.dataset.rowIndex = sheetRowNumber;
+            td.dataset.colIndex = c + 1;
+
+            td.addEventListener("blur", onCellEdit);
+
+          } else {
+            // --- СТОЛБЦЫ 1-4 (A-D) И СТОЛБЕЦ 10 (J) -> ТОЛЬКО ДЛЯ ЧТЕНИЯ ---
+            td.className = "readonly";
+            td.textContent = cellValue;
+          }
+
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+    }
+
+    // Обработчик редактирования текста
+    function onCellEdit(event) {
+      const cell = event.target;
+      const rowIndex = parseInt(cell.dataset.rowIndex);
+      const colIndex = parseInt(cell.dataset.colIndex);
+      const newValue = cell.textContent.trim();
+
+      sendUpdates([{ rowIndex, colIndex, value: newValue }]);
+    }
+
+    // 4. Отправка изменений
+    async function sendUpdates(updatesArray) {
+      setStatus("Сохранение...", "syncing");
+
+      try {
+        const payload = {
+          sheet: currentSheet,
+          updates: updatesArray
+        };
+
+        const res = await fetch(API_URL, {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+
+        const result = await res.json();
+        if (result.success) {
+          setStatus("Сохранено", "success");
+        } else {
+          setStatus("Ошибка", "error");
+        }
+      } catch (e) {
+        setStatus("Ошибка сети", "error");
+      }
+    }
+
+    // Выбор листа
+    sheetSelect.addEventListener("change", (e) => {
+      currentSheet = e.target.value;
+      loadTableData(currentSheet);
+    });
+
+    // Автообновление каждые 10 секунд
+    setInterval(() => {
+      if (currentSheet) {
+        loadTableData(currentSheet, true);
+      }
+    }, 10000);
+
+    // Старт
+    loadSheets();
   </script>
 </body>
 </html>
