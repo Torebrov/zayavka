@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Загрузка из Google Sheets через JSON</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    table { border-collapse: collapse; width: 100%; max-width: 700px; margin-top: 15px; }
+    th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
+    th { background-color: #f4f4f4; }
+    .status { color: #666; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+  <h2>Авто-загрузка через Google Visualization API (JSON)</h2>
+  <div class="status" id="status">Загрузка...</div>
+
+  <table id="myTable">
+    <thead>
+      <tr id="tableHeader"></tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+
+  <script>
+    // ВСТАВЬТЕ СЮДА ID ВАШЕЙ ТАБЛИЦЫ
+    const SPREADSHEET_ID = '1dNnbLb6sIOrY0THyMOftjhyZQANtPpBb5WVm3SIM-RI';
+    const SHEET_NAME = '12.08.2026';
+    const RANGE = 'B6:B30';
+    // Ссылка на JSON-эндпоинт
+    const JSON_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_NAME)}&range=${RANGE}`;
+
+    async function fetchSheetData() {
+      const statusDiv = document.getElementById('status');
+
+      try {
+        const response = await fetch(JSON_URL, { cache: 'no-cache' });
+        const textData = await response.text();
+
+        // Ответ Google обернут в google.visualization.Query.setResponse(...);
+        // Вырезаем сам чистый JSON внутри скобок
+        const jsonString = textData.substring(
+          textData.indexOf('{'),
+          textData.lastIndexOf('}') + 1
+        );
+
+        const data = JSON.parse(jsonString);
+        renderTable(data.table);
+
+        statusDiv.textContent = `Данные загружены! Обновлено: ${new Date().toLocaleTimeString()}`;
+      } catch (err) {
+        console.error('Ошибка:', err);
+        statusDiv.textContent = 'Ошибка при загрузке данных.';
+      }
+    }
+
+    function renderTable(tableData) {
+      const headerRow = document.getElementById('tableHeader');
+      const tbody = document.getElementById('tableBody');
+
+      headerRow.innerHTML = '';
+      tbody.innerHTML = '';
+
+      // 1. Отрисовка заголовков столбцов
+      tableData.cols.forEach(col => {
+        const th = document.createElement('th');
+        // Берем имя столбца из Google Sheets (если задано) или дефолтный лейбл
+        th.textContent = col.label || col.id;
+        headerRow.appendChild(th);
+      });
+
+      // 2. Отрисовка строк
+      tableData.rows.forEach(row => {
+        const tr = document.createElement('tr');
+        
+        row.c.forEach(cell => {
+          const td = document.createElement('td');
+          // Если ячейка не пустая, берем ее отформатированное значение (v) или сырой текст (f)
+          td.textContent = cell && cell.v !== null ? (cell.f || cell.v) : '';
+          tr.appendChild(td);
+        });
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Запускаем при загрузке страницы
+    fetchSheetData();
+  </script>
+</body>
+</html>
